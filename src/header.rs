@@ -11,12 +11,24 @@ pub struct HvHeader {
     pub percpu_size: usize,
     pub entry: usize,
     pub max_cpus: u32,
-    pub online_cpus: u32,
+    pub rt_cpus: u32,
 }
 
 impl HvHeader {
     pub fn get<'a>() -> &'a Self {
         unsafe { &*HV_HEADER_PTR }
+    }
+
+    pub fn vm_cpus(&self) -> u32 {
+        if self.rt_cpus < self.max_cpus {
+            self.max_cpus - self.rt_cpus
+        } else {
+            warn!(
+                "Invalid HvHeader: rt_cpus ({}) >= max_cpus ({})",
+                self.rt_cpus, self.max_cpus
+            );
+            self.max_cpus
+        }
     }
 }
 
@@ -27,7 +39,7 @@ struct HvHeaderStuff {
     percpu_size: usize,
     entry: unsafe extern "C" fn(),
     max_cpus: u32,
-    online_cpus: u32,
+    rt_cpus: u32,
 }
 
 extern "C" {
@@ -43,7 +55,7 @@ static HEADER_STUFF: HvHeaderStuff = HvHeaderStuff {
     percpu_size: PER_CPU_SIZE,
     entry: __entry_offset,
     max_cpus: 0,
-    online_cpus: 0,
+    rt_cpus: 0,
 };
 
 impl Debug for HvHeader {
@@ -54,7 +66,8 @@ impl Debug for HvHeader {
             .field("percpu_size", &self.percpu_size)
             .field("entry", &self.entry)
             .field("max_cpus", &self.max_cpus)
-            .field("online_cpus", &self.online_cpus)
+            .field("rt_cpus", &self.rt_cpus)
+            .field("vm_cpus", &self.vm_cpus())
             .finish()
     }
 }

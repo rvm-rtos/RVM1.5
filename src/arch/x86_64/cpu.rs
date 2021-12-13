@@ -38,7 +38,7 @@ pub fn set_thread_pointer(tp: usize) {
 }
 
 /// Reset CPU states for hypervisor use.
-pub fn init_percpu(_cpu_data: &PerCpu) -> HvResult {
+pub fn init_percpu(cpu_data: &PerCpu) -> HvResult {
     // Setup new GDT, IDT, CS, TSS
     GDT.lock().load();
     unsafe {
@@ -53,5 +53,9 @@ pub fn init_percpu(_cpu_data: &PerCpu) -> HvResult {
     // PAT0: WB, PAT1: WC, PAT2: UC
     unsafe { Msr::IA32_PAT.write(0x070106) };
 
+    super::apic::init_percpu(cpu_data)?;
+
     Ok(())
 }
+
+pub fn start_rt_cpus() {}

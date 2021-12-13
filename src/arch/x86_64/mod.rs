@@ -1,5 +1,6 @@
 #[macro_use]
 mod context;
+mod apic;
 mod cpuid;
 mod entry;
 mod exception;
@@ -17,3 +18,7 @@ pub use page_table::PageTable as HostPageTable;
 pub use page_table::PageTable as GuestPageTable;
 pub use page_table::PageTableImmut as GuestPageTableImmut;
 pub use vmm::NestedPageTable;
+
+pub fn init_early() -> crate::error::HvResult {
+    apic::init()
+}

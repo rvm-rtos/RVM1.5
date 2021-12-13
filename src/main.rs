@@ -100,6 +100,7 @@ fn primary_init_early() -> HvResult {
     memory::init_frame_allocator();
     memory::init_hv_page_table()?;
     cell::init()?;
+    arch::init_early()?;
 
     INIT_EARLY_OK.store(1, Ordering::Release);
     Ok(())
@@ -107,14 +108,16 @@ fn primary_init_early() -> HvResult {
 
 fn primary_init_late() {
     info!("Primary CPU init late...");
-    // Do nothing...
+
+    arch::cpu::start_rt_cpus();
+
     INIT_LATE_OK.store(1, Ordering::Release);
 }
 
 fn main(cpu_data: &mut PerCpu, linux_sp: usize) -> HvResult {
     let is_primary = cpu_data.id == 0;
-    let online_cpus = HvHeader::get().online_cpus;
-    wait_for(|| PerCpu::entered_cpus() < online_cpus)?;
+    let vm_cpus = HvHeader::get().vm_cpus();
+    wait_for(|| PerCpu::entered_cpus() < vm_cpus)?;
     println!(
         "{} CPU {} entered.",
         if is_primary { "Primary" } else { "Secondary" },
@@ -130,7 +133,7 @@ fn main(cpu_data: &mut PerCpu, linux_sp: usize) -> HvResult {
     cpu_data.init(linux_sp, cell::root_cell())?;
     println!("CPU {} init OK.", cpu_data.id);
     INITED_CPUS.fetch_add(1, Ordering::SeqCst);
-    wait_for_counter(&INITED_CPUS, online_cpus)?;
+    wait_for_counter(&INITED_CPUS, vm_cpus)?;
 
     if is_primary {
         primary_init_late();

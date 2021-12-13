@@ -5,6 +5,8 @@ use x86::msr::{rdmsr, wrmsr};
 #[derive(Debug, Copy, Clone)]
 #[allow(non_camel_case_types)]
 pub enum Msr {
+    IA32_APIC_BASE = 0x1b,
+
     IA32_FEATURE_CONTROL = 0x3a,
 
     IA32_SYSENTER_CS = 0x174,
