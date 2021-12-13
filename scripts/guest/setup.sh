@@ -10,14 +10,12 @@ sudo mkdir -p /lib/firmware
 sudo ln -sf ~/rvm-intel.bin /lib/firmware
 
 # Clone jailhouse, apply patches and build
-git clone https://github.com/siemens/jailhouse.git
+git clone https://github.com/rvm-rtos/jailhouse.git
 cd jailhouse
-git checkout v0.10
-patch -f -p1 < ../jailhouse.patch
-./gen-config.sh
 make
 
-# Generate a grub config file
+# Update grub config file to update kernel cmdline
+./update-cmdline.sh
 sudo update-grub
 
 echo
