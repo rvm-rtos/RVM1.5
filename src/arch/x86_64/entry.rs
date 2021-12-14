@@ -17,7 +17,7 @@ unsafe extern "sysv64" fn switch_stack(linux_sp: usize) -> i32 {
         push rcx
         call {entry}
         pop rsp",
-        entry = sym crate::entry,
+        entry = sym crate::vm_cpu_entry,
         linux_tp = in(reg) linux_tp,
         hv_sp = in(reg) hv_sp,
         in("rdi") cpu_data,

@@ -1,6 +1,6 @@
 use libvmm::msr::Msr;
 use spin::{Once, RwLock};
-use x86::apic::{x2apic::X2APIC, xapic::XAPIC, ApicControl};
+use x86::apic::{x2apic::X2APIC, xapic::XAPIC, ApicControl, ApicId};
 
 use alloc::sync::Arc;
 
@@ -105,4 +105,29 @@ pub(super) fn init_percpu(cpu_data: &PerCpu) -> HvResult {
     }
     unsafe { APIC_TO_CPU_ID[apic_id as usize] = cpu_data.id };
     Ok(())
+}
+
+pub(super) unsafe fn start_ap(apic_id: u32, start_page_idx: u8) {
+    info!("Starting RT cpu {}...", apic_id);
+    let apic_id = if lapic().is_x2apic {
+        ApicId::X2Apic(apic_id)
+    } else {
+        ApicId::XApic(apic_id as u8)
+    };
+
+    // INIT-SIPI-SIPI Sequence
+    let mut lapic = lapic().inner.write();
+    lapic.ipi_init(apic_id);
+    delay_us(10 * 1000); // 10ms
+    lapic.ipi_startup(apic_id, start_page_idx);
+    delay_us(200); // 200 us
+    lapic.ipi_startup(apic_id, start_page_idx);
+}
+
+/// Spinning delay for specified amount of time on microseconds.
+fn delay_us(us: u64) {
+    let cycle_end = super::cpu::current_cycle() + us * super::cpu::frequency() as u64;
+    while super::cpu::current_cycle() < cycle_end {
+        core::hint::spin_loop();
+    }
 }

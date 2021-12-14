@@ -37,12 +37,17 @@ impl PerCpu {
         }
 
         let cpu_id = ENTERED_CPUS.fetch_add(1, Ordering::SeqCst);
-        let vaddr = PER_CPU_ARRAY_PTR as VirtAddr + cpu_id as usize * PER_CPU_SIZE;
-        let ret = unsafe { &mut *(vaddr as *mut Self) };
+        let ret = unsafe { Self::from_id_mut(cpu_id) };
+        let vaddr = ret as *const _ as VirtAddr;
         ret.id = cpu_id;
         ret.self_vaddr = vaddr;
         cpu::set_thread_pointer(vaddr);
         Ok(ret)
+    }
+
+    pub unsafe fn from_id_mut<'a>(cpu_id: u32) -> &'a mut Self {
+        let vaddr = PER_CPU_ARRAY_PTR as VirtAddr + cpu_id as usize * PER_CPU_SIZE;
+        &mut *(vaddr as *mut Self)
     }
 
     pub fn current<'a>() -> &'a Self {
