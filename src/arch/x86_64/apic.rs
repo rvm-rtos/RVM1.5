@@ -7,7 +7,6 @@ use alloc::sync::Arc;
 use crate::error::HvResult;
 use crate::memory::addr::{phys_to_virt, PhysAddr};
 use crate::memory::{hv_page_table, MemFlags, MemoryRegion, PAGE_SIZE};
-use crate::percpu::PerCpu;
 
 const APIC_BASE: PhysAddr = 0xFEE0_0000;
 const MAX_APIC_ID: u32 = 254;
@@ -98,12 +97,12 @@ pub(super) fn init() -> HvResult {
     Ok(())
 }
 
-pub(super) fn init_percpu(cpu_data: &PerCpu) -> HvResult {
+pub(super) fn init_percpu(cpu_id: u32) -> HvResult {
     let apic_id = lapic().id();
     if apic_id > MAX_APIC_ID {
         return hv_result_err!(ERANGE);
     }
-    unsafe { APIC_TO_CPU_ID[apic_id as usize] = cpu_data.id };
+    unsafe { APIC_TO_CPU_ID[apic_id as usize] = cpu_id };
     Ok(())
 }
 

@@ -17,9 +17,9 @@ use x86_64::registers::rflags::RFlags;
 use super::structs::{MsrBitmap, VmxRegion};
 use crate::arch::cpuid::CpuFeatures;
 use crate::arch::segmentation::{Segment, SegmentAccessRights};
-use crate::arch::tables::{GDTStruct, GDT, IDT};
+use crate::arch::tables::{GdtStruct, IDT};
 use crate::arch::vmm::VcpuAccessGuestState;
-use crate::arch::{GuestPageTableImmut, GuestRegisters, LinuxContext};
+use crate::arch::{GeneralRegisters, GuestPageTableImmut, LinuxContext};
 use crate::cell::Cell;
 use crate::error::HvResult;
 use crate::percpu::PerCpu;
@@ -27,7 +27,7 @@ use crate::percpu::PerCpu;
 #[repr(C)]
 pub struct Vcpu {
     /// Save guest general registers when handle VM exits.
-    guest_regs: GuestRegisters,
+    guest_regs: GeneralRegisters,
     /// RSP will be loaded from here when handle VM exits.
     host_stack_top: u64,
     /// VMXON region, required by VMX
@@ -189,18 +189,18 @@ impl Vcpu {
         VmcsField64Host::CR3.write(Cr3::read().0.start_address().as_u64())?;
         VmcsField64Host::CR4.write(Cr4::read_raw())?;
 
-        VmcsField16Host::CS_SELECTOR.write(GDTStruct::KCODE_SELECTOR.bits())?;
-        VmcsField16Host::DS_SELECTOR.write(0)?;
         VmcsField16Host::ES_SELECTOR.write(0)?;
+        VmcsField16Host::CS_SELECTOR.write(GdtStruct::KCODE_SELECTOR.bits())?;
         VmcsField16Host::SS_SELECTOR.write(0)?;
+        VmcsField16Host::DS_SELECTOR.write(0)?;
         VmcsField16Host::FS_SELECTOR.write(0)?;
         VmcsField16Host::GS_SELECTOR.write(0)?;
-        VmcsField16Host::TR_SELECTOR.write(GDTStruct::TSS_SELECTOR.bits())?;
+        VmcsField16Host::TR_SELECTOR.write(GdtStruct::TSS_SELECTOR.bits())?;
         VmcsField64Host::FS_BASE.write(0)?;
         VmcsField64Host::GS_BASE.write(Msr::IA32_GS_BASE.read())?;
         VmcsField64Host::TR_BASE.write(0)?;
 
-        VmcsField64Host::GDTR_BASE.write(GDT.lock().pointer().base.as_u64())?;
+        VmcsField64Host::GDTR_BASE.write(GdtStruct::sgdt().base.as_u64())?;
         VmcsField64Host::IDTR_BASE.write(IDT.lock().pointer().base.as_u64())?;
 
         VmcsField64Host::IA32_SYSENTER_ESP.write(0)?;
@@ -221,13 +221,13 @@ impl Vcpu {
         self.set_cr(4, linux.cr4.bits());
         self.set_cr(3, linux.cr3);
 
-        set_guest_segment!(linux.cs, CS);
-        set_guest_segment!(linux.ds, DS);
         set_guest_segment!(linux.es, ES);
+        set_guest_segment!(linux.cs, CS);
+        set_guest_segment!(linux.ss, SS);
+        set_guest_segment!(linux.ds, DS);
         set_guest_segment!(linux.fs, FS);
         set_guest_segment!(linux.gs, GS);
         set_guest_segment!(linux.tss, TR);
-        set_guest_segment!(Segment::invalid(), SS);
         set_guest_segment!(Segment::invalid(), LDTR);
 
         VmcsField64Guest::GDTR_BASE.write(linux.gdt.base.as_u64())?;
@@ -263,9 +263,10 @@ impl Vcpu {
         linux.cr4 = Cr4Flags::from_bits_truncate(VmcsField64Guest::CR4.read()?)
             - Cr4Flags::VIRTUAL_MACHINE_EXTENSIONS;
 
-        linux.cs.selector = SegmentSelector::from_raw(VmcsField16Guest::CS_SELECTOR.read()?);
-        linux.ds.selector = SegmentSelector::from_raw(VmcsField16Guest::DS_SELECTOR.read()?);
         linux.es.selector = SegmentSelector::from_raw(VmcsField16Guest::ES_SELECTOR.read()?);
+        linux.cs.selector = SegmentSelector::from_raw(VmcsField16Guest::CS_SELECTOR.read()?);
+        linux.ss.selector = SegmentSelector::from_raw(VmcsField16Guest::SS_SELECTOR.read()?);
+        linux.ds.selector = SegmentSelector::from_raw(VmcsField16Guest::DS_SELECTOR.read()?);
         linux.fs.selector = SegmentSelector::from_raw(VmcsField16Guest::FS_SELECTOR.read()?);
         linux.fs.base = VmcsField64Guest::FS_BASE.read()?;
         linux.gs.selector = SegmentSelector::from_raw(VmcsField16Guest::GS_SELECTOR.read()?);
@@ -362,11 +363,11 @@ impl Vcpu {
 }
 
 impl VcpuAccessGuestState for Vcpu {
-    fn regs(&self) -> &GuestRegisters {
+    fn regs(&self) -> &GeneralRegisters {
         &self.guest_regs
     }
 
-    fn regs_mut(&mut self) -> &mut GuestRegisters {
+    fn regs_mut(&mut self) -> &mut GeneralRegisters {
         &mut self.guest_regs
     }
 
@@ -483,7 +484,7 @@ unsafe extern "sysv64" fn vmx_exit() -> ! {
         "mov rsp, r15",         // load temporary RSP from r15
         restore_regs_from_stack!(),
         "vmresume",
-        const core::mem::size_of::<GuestRegisters>(),
+        const core::mem::size_of::<GeneralRegisters>(),
         sym crate::arch::vmm::vmexit_handler,
     );
     panic!("VM resume failed: {:?}", Vmcs::instruction_error());

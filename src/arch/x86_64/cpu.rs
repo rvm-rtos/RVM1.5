@@ -1,11 +1,9 @@
 use core::slice;
 
 use libvmm::msr::Msr;
-use x86::{segmentation, segmentation::SegmentSelector};
 
 use super::apic;
 use super::cpuid::CpuId;
-use super::tables::{GDTStruct, GDT, IDT};
 use crate::error::HvResult;
 use crate::memory::{addr::phys_to_virt, hv_page_table, MemFlags, MemoryRegion, PAGE_SIZE};
 use crate::percpu::PerCpu;
@@ -23,7 +21,8 @@ pub fn frequency() -> u16 {
 }
 
 pub fn current_cycle() -> u64 {
-    unsafe { core::arch::x86_64::_rdtsc() }
+    let mut aux = 0;
+    unsafe { core::arch::x86_64::__rdtscp(&mut aux) }
 }
 
 pub fn current_time_nanos() -> u64 {
@@ -38,27 +37,6 @@ pub fn thread_pointer() -> usize {
 
 pub fn set_thread_pointer(tp: usize) {
     unsafe { Msr::IA32_GS_BASE.write(tp as u64) };
-}
-
-/// Reset CPU states for hypervisor use.
-pub fn init_percpu(cpu_data: &PerCpu) -> HvResult {
-    // Setup new GDT, IDT, CS, TSS
-    GDT.lock().load();
-    unsafe {
-        segmentation::load_cs(GDTStruct::KCODE_SELECTOR);
-        segmentation::load_ds(SegmentSelector::from_raw(0));
-        segmentation::load_es(SegmentSelector::from_raw(0));
-        segmentation::load_ss(SegmentSelector::from_raw(0));
-    }
-    IDT.lock().load();
-    GDT.lock().load_tss(GDTStruct::TSS_SELECTOR);
-
-    // PAT0: WB, PAT1: WC, PAT2: UC
-    unsafe { Msr::IA32_PAT.write(0x070106) };
-
-    apic::init_percpu(cpu_data)?;
-
-    Ok(())
 }
 
 global_asm!(include_str!("boot_ap.S"));

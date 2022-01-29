@@ -4,7 +4,7 @@ use x86_64::registers::control::{Cr0, Cr0Flags, Cr3, Cr3Flags, Cr4, Cr4Flags};
 use x86_64::{addr::PhysAddr, structures::paging::PhysFrame, structures::DescriptorTablePointer};
 
 use super::segmentation::Segment;
-use super::tables::{GDTStruct, IDTStruct, GDT};
+use super::tables::{GdtStruct, IdtStruct};
 
 const SAVED_LINUX_REGS: usize = 8;
 
@@ -20,9 +20,10 @@ pub struct LinuxContext {
     pub rbx: u64,
     pub rbp: u64,
 
-    pub cs: Segment,
-    pub ds: Segment,
     pub es: Segment,
+    pub cs: Segment,
+    pub ss: Segment,
+    pub ds: Segment,
     pub fs: Segment,
     pub gs: Segment,
     pub tss: Segment,
@@ -34,14 +35,18 @@ pub struct LinuxContext {
     pub cr4: Cr4Flags,
 
     pub efer: u64,
+    pub star: u64,
     pub lstar: u64,
+    pub cstar: u64,
+    pub fmask: u64,
+    pub kernel_gsbase: u64,
     pub pat: u64,
     pub mtrr_def_type: u64,
 }
 
 #[repr(C)]
 #[derive(Debug, Default)]
-pub struct GuestRegisters {
+pub struct GeneralRegisters {
     pub rax: u64,
     pub rcx: u64,
     pub rdx: u64,
@@ -108,7 +113,7 @@ impl LinuxContext {
     /// Load linux callee-saved registers from the stack, and other system registers.
     pub fn load_from(linux_sp: usize) -> Self {
         let regs = unsafe { core::slice::from_raw_parts(linux_sp as *const u64, SAVED_LINUX_REGS) };
-        let gdt = GDTStruct::sgdt();
+        let gdt = GdtStruct::sgdt();
         let mut fs = Segment::from_selector(segmentation::fs(), &gdt);
         let mut gs = Segment::from_selector(segmentation::gs(), &gdt);
         fs.base = Msr::IA32_FS_BASE.read();
@@ -123,19 +128,24 @@ impl LinuxContext {
             rbx: regs[5],
             rbp: regs[6],
             rip: regs[7],
-            cs: Segment::from_selector(segmentation::cs(), &gdt),
-            ds: Segment::from_selector(segmentation::ds(), &gdt),
             es: Segment::from_selector(segmentation::es(), &gdt),
+            cs: Segment::from_selector(segmentation::cs(), &gdt),
+            ss: Segment::from_selector(segmentation::ss(), &gdt),
+            ds: Segment::from_selector(segmentation::ds(), &gdt),
             fs,
             gs,
             tss: Segment::from_selector(unsafe { task::tr() }, &gdt),
             gdt,
-            idt: IDTStruct::sidt(),
+            idt: IdtStruct::sidt(),
             cr0: Cr0::read(),
             cr3: Cr3::read().0.start_address().as_u64(),
             cr4: Cr4::read(),
             efer: Msr::IA32_EFER.read(),
+            star: Msr::IA32_STAR.read(),
             lstar: Msr::IA32_LSTAR.read(),
+            cstar: Msr::IA32_CSTAR.read(),
+            fmask: Msr::IA32_FMASK.read(),
+            kernel_gsbase: Msr::IA32_KERNEL_GSBASE.read(),
             pat: Msr::IA32_PAT.read(),
             mtrr_def_type: Msr::IA32_MTRR_DEF_TYPE.read(),
         }
@@ -144,8 +154,13 @@ impl LinuxContext {
     /// Restore system registers.
     pub fn restore(&self) {
         unsafe {
-            Msr::IA32_PAT.write(self.pat);
             Msr::IA32_EFER.write(self.efer);
+            Msr::IA32_STAR.write(self.star);
+            Msr::IA32_LSTAR.write(self.lstar);
+            Msr::IA32_CSTAR.write(self.cstar);
+            Msr::IA32_FMASK.write(self.fmask);
+            Msr::IA32_KERNEL_GSBASE.write(self.kernel_gsbase);
+            Msr::IA32_PAT.write(self.pat);
 
             Cr0::write(self.cr0);
             Cr4::write(self.cr4);
@@ -157,22 +172,20 @@ impl LinuxContext {
 
             // Copy Linux TSS descriptor into our GDT, clearing the busy flag,
             // then reload TR from it. We can't use Linux' GDT as it is r/o.
-            {
-                let mut hv_gdt_lock = GDT.lock();
-                let hv_gdt = GDTStruct::table_of_mut(hv_gdt_lock.pointer());
-                let liunx_gdt = GDTStruct::table_of(&self.gdt);
-                let tss_idx = self.tss.selector.index() as usize;
-                hv_gdt[tss_idx] = liunx_gdt[tss_idx];
-                hv_gdt[tss_idx + 1] = liunx_gdt[tss_idx + 1];
-                hv_gdt_lock.load_tss(self.tss.selector);
-            }
+            let mut hv_gdt = GdtStruct::from_pointer(&GdtStruct::sgdt());
+            let liunx_gdt = GdtStruct::from_pointer(&self.gdt);
+            let tss_idx = self.tss.selector.index() as usize;
+            hv_gdt[tss_idx] = liunx_gdt[tss_idx];
+            hv_gdt[tss_idx + 1] = liunx_gdt[tss_idx + 1];
+            hv_gdt.load_tss(self.tss.selector);
 
-            GDTStruct::lgdt(&self.gdt);
-            IDTStruct::lidt(&self.idt);
+            GdtStruct::lgdt(&self.gdt);
+            IdtStruct::lidt(&self.idt);
 
-            segmentation::load_cs(self.cs.selector); // XXX: failed to swtich to user CS
-            segmentation::load_ds(self.ds.selector);
             segmentation::load_es(self.es.selector);
+            segmentation::load_cs(self.cs.selector);
+            segmentation::load_ss(self.ss.selector);
+            segmentation::load_ds(self.ds.selector);
             segmentation::load_fs(self.fs.selector);
             segmentation::load_gs(self.gs.selector);
 
@@ -181,7 +194,7 @@ impl LinuxContext {
     }
 
     /// Restore linux general-purpose registers and stack, then return back to linux.
-    pub fn return_to_linux(&self, guest_regs: &GuestRegisters) -> ! {
+    pub fn return_to_linux(&self, guest_regs: &GeneralRegisters) -> ! {
         unsafe {
             Msr::IA32_GS_BASE.write(self.gs.base);
             asm!(
@@ -196,7 +209,7 @@ impl LinuxContext {
                 linux_rsp = in(reg) self.rsp,
                 linux_rip = in(reg) self.rip,
                 guest_regs = in(reg) guest_regs,
-                guest_regs_size = const core::mem::size_of::<GuestRegisters>(),
+                guest_regs_size = const core::mem::size_of::<GeneralRegisters>(),
                 options(noreturn),
             );
         }
