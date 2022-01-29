@@ -9,7 +9,8 @@ mod vendor;
 use x86_64::registers::control::{Cr0Flags, Cr4Flags};
 
 use super::GeneralRegisters;
-use crate::{error::HvResult, percpu::PerCpu};
+use crate::error::HvResult;
+use crate::percpu::{self, VmPerCpuData};
 
 pub use vendor::{check_hypervisor_feature, NestedPageTable, Vcpu};
 
@@ -51,13 +52,13 @@ const HOST_CR0: Cr0Flags = Cr0Flags::from_bits_truncate(
 const HOST_CR4: Cr4Flags = Cr4Flags::PHYSICAL_ADDRESS_EXTENSION;
 
 pub(super) struct VmExit<'a> {
-    pub cpu_data: &'a mut PerCpu,
+    pub cpu_data: &'a mut VmPerCpuData,
 }
 
 impl VmExit<'_> {
     pub fn new() -> Self {
         Self {
-            cpu_data: PerCpu::current_mut(),
+            cpu_data: percpu::current_vm_cpu().expect("Current CPU is not VM CPU!"),
         }
     }
 

@@ -17,12 +17,10 @@ use x86_64::registers::rflags::RFlags;
 use super::structs::{MsrBitmap, VmxRegion};
 use crate::arch::cpuid::CpuFeatures;
 use crate::arch::segmentation::{Segment, SegmentAccessRights};
-use crate::arch::tables::{GdtStruct, IDT};
+use crate::arch::tables::{GdtStruct, IdtStruct};
 use crate::arch::vmm::VcpuAccessGuestState;
 use crate::arch::{GeneralRegisters, GuestPageTableImmut, LinuxContext};
-use crate::cell::Cell;
-use crate::error::HvResult;
-use crate::percpu::PerCpu;
+use crate::{cell::Cell, error::HvResult, percpu};
 
 #[repr(C)]
 pub struct Vcpu {
@@ -103,7 +101,7 @@ impl Vcpu {
         // Setup VMCS.
         let mut ret = Self {
             guest_regs: Default::default(),
-            host_stack_top: PerCpu::current().stack_top() as _,
+            host_stack_top: percpu::current().stack_top() as _,
             vmxon_region,
             vmcs_region,
         };
@@ -113,6 +111,7 @@ impl Vcpu {
     }
 
     pub fn enter(&mut self, linux: &LinuxContext) -> HvResult {
+        VmcsField64Host::RSP.write(&self.host_stack_top as *const _ as u64)?; // used for saving guest registers
         let regs = self.regs_mut();
         regs.rax = 0;
         regs.rbx = linux.rbx;
@@ -160,6 +159,7 @@ impl Vcpu {
             == 0
     }
 
+    #[allow(dead_code)]
     pub fn in_hypercall(&self) -> bool {
         matches!(Vmcs::exit_reason(), Ok(VmxExitReason::VMCALL))
     }
@@ -201,14 +201,12 @@ impl Vcpu {
         VmcsField64Host::TR_BASE.write(0)?;
 
         VmcsField64Host::GDTR_BASE.write(GdtStruct::sgdt().base.as_u64())?;
-        VmcsField64Host::IDTR_BASE.write(IDT.lock().pointer().base.as_u64())?;
+        VmcsField64Host::IDTR_BASE.write(IdtStruct::sidt().base.as_u64())?;
 
         VmcsField64Host::IA32_SYSENTER_ESP.write(0)?;
         VmcsField64Host::IA32_SYSENTER_EIP.write(0)?;
         VmcsField32Host::IA32_SYSENTER_CS.write(0)?;
 
-        let rsp = &PerCpu::current().vcpu.host_stack_top as *const _ as u64;
-        VmcsField64Host::RSP.write(rsp)?; // used for saving guest registers
         VmcsField64Host::RIP.write(vmx_exit as usize as _)?;
         Ok(())
     }
