@@ -31,7 +31,7 @@ pub fn current_time_nanos() -> u64 {
 
 pub fn thread_pointer() -> usize {
     let ret;
-    unsafe { asm!("mov {0}, gs:0", out(reg) ret, options(nostack)) }; // PerCpu::self_vaddr
+    unsafe { core::arch::asm!("mov {0}, gs:0", out(reg) ret, options(nostack)) }; // PerCpu::self_vaddr
     ret
 }
 
@@ -39,7 +39,7 @@ pub fn set_thread_pointer(tp: usize) {
     unsafe { Msr::IA32_GS_BASE.write(tp as u64) };
 }
 
-global_asm!(include_str!("boot_ap.S"));
+core::arch::global_asm!(include_str!("boot_ap.S"));
 
 #[allow(clippy::uninit_assumed_init)]
 pub unsafe fn start_rt_cpus() -> HvResult {

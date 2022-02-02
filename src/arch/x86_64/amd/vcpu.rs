@@ -1,3 +1,4 @@
+use core::arch::asm;
 use core::fmt::{Debug, Formatter, Result};
 
 use libvmm::msr::Msr;
@@ -133,7 +134,6 @@ impl Vcpu {
 
     #[allow(dead_code)]
     pub fn in_hypercall(&self) -> bool {
-        use core::convert::TryInto;
         matches!(
             self.vmcb.control.exit_code.try_into(),
             Ok(SvmExitCode::VMMCALL)

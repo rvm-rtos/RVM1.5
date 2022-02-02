@@ -1,3 +1,5 @@
+use core::arch::{asm, global_asm};
+
 use super::context::GeneralRegisters;
 
 global_asm!(include_str!(concat!(env!("OUT_DIR"), "/exception.S")));
@@ -81,7 +83,6 @@ fn handle_page_fault(frame: &TrapFrame) {
 
 #[naked]
 #[no_mangle]
-#[inline(never)]
 unsafe extern "sysv64" fn common_exception_entry() -> ! {
     asm!(
         save_regs_to_stack!(),
