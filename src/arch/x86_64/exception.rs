@@ -59,8 +59,7 @@ fn exception_handler(frame: &TrapFrame) {
         ExceptionType::NonMaskableInterrupt => handle_nmi(),
         ExceptionType::PageFault => handle_page_fault(frame),
         ExceptionType::IrqStart..=ExceptionType::IrqEnd => {
-            error!("{:#x?}", frame);
-            panic!("Unhandled interrupt #{:#x}", frame.num);
+            warn!("Unhandled IRQ #{:#x?}", frame.num);
         }
         _ => {
             error!("{:#x?}", frame);

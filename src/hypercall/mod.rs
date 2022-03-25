@@ -4,9 +4,9 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use bit_field::BitField;
 use numeric_enum_macro::numeric_enum;
 
-use crate::arch::vmm::VcpuAccessGuestState;
-use crate::arch::GuestPageTableImmut;
+use crate::arch::{vmm::VcpuAccessGuestState, GuestPageTableImmut};
 use crate::error::HvResult;
+use crate::memory::addr::PhysAddr;
 use crate::percpu::PerCpu;
 
 numeric_enum! {
@@ -14,6 +14,7 @@ numeric_enum! {
     #[derive(Debug, Eq, PartialEq, Copy, Clone)]
     pub enum HyperCallCode {
         HypervisorDisable = 0,
+        RtStart = 1,
     }
 }
 
@@ -62,6 +63,7 @@ impl<'a> HyperCall<'a> {
         debug!("HyperCall: {:?} => arg0={:#x}", code, arg0);
         let ret = match code {
             HyperCallCode::HypervisorDisable => self.hypervisor_disable(),
+            HyperCallCode::RtStart => self.start_rtos(arg0 as _),
         };
         if ret.is_err() {
             warn!("HyperCall: {:?} <= {:x?}", code, ret);
@@ -95,5 +97,18 @@ impl<'a> HyperCall<'a> {
 
         self.cpu_data.deactivate_vmm(0)?;
         unreachable!()
+    }
+
+    fn start_rtos(&mut self, entry_paddr: PhysAddr) -> HyperCallResult {
+        let sys_config = crate::config::HvSystemConfig::get();
+        let rt_mem_start = sys_config.rtos_memory.phys_start;
+        let rt_mem_end = rt_mem_start + sys_config.rtos_memory.size;
+        if !(rt_mem_start..rt_mem_end).contains(&(entry_paddr as u64)) {
+            return hv_result_err!(EINVAL);
+        }
+
+        info!("Starting RTOS: entry={:#x}", entry_paddr);
+        unsafe { crate::arch::start_rt_cpus(entry_paddr)? };
+        Ok(0)
     }
 }

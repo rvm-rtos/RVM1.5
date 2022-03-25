@@ -38,8 +38,10 @@ pub struct HvMemoryRegion {
 pub struct HvSystemConfig {
     pub signature: [u8; 6],
     pub revision: u16,
-    /// Jailhouse's location in memory
+    /// RVM location in memory
     pub hypervisor_memory: HvMemoryRegion,
+    /// RTOS location in memory
+    pub rtos_memory: HvMemoryRegion,
     pub root_cell: HvCellDesc,
     // CellConfigLayout placed here.
 }

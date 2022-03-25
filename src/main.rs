@@ -108,9 +108,6 @@ fn primary_init_early() -> HvResult {
 
 fn primary_init_late() -> HvResult {
     info!("Primary CPU init late...");
-
-    unsafe { arch::cpu::start_rt_cpus()? };
-
     INIT_LATE_OK.store(1, Ordering::Release);
     Ok(())
 }
@@ -145,13 +142,6 @@ fn main(cpu_data: &mut PerCpu, linux_sp: usize) -> HvResult {
     cpu_data.activate_vmm()
 }
 
-fn rt_main(cpu_data: &mut PerCpu) -> ! {
-    println!("RT CPU {} entered.", cpu_data.id);
-    loop {
-        core::hint::spin_loop();
-    }
-}
-
 extern "sysv64" fn vm_cpu_entry(cpu_data: &mut PerCpu, linux_sp: usize) -> i32 {
     if let Err(e) = main(cpu_data, linux_sp) {
         error!("{:?}", e);
@@ -163,9 +153,4 @@ extern "sysv64" fn vm_cpu_entry(cpu_data: &mut PerCpu, linux_sp: usize) -> i32 {
         cpu_data.id, code
     );
     code
-}
-
-extern "sysv64" fn rt_cpu_entry() -> ! {
-    let cpu_data = PerCpu::new().expect("Failed to allocate RT CPU");
-    rt_main(cpu_data)
 }

@@ -18,7 +18,7 @@ use x86_64::registers::rflags::RFlags;
 use super::structs::{MsrBitmap, VmxRegion};
 use crate::arch::cpuid::CpuFeatures;
 use crate::arch::segmentation::{Segment, SegmentAccessRights};
-use crate::arch::tables::{GdtStruct, IDT};
+use crate::arch::tables::{GdtStruct, IdtStruct};
 use crate::arch::vmm::VcpuAccessGuestState;
 use crate::arch::{GeneralRegisters, GuestPageTableImmut, LinuxContext};
 use crate::cell::Cell;
@@ -202,7 +202,7 @@ impl Vcpu {
         VmcsField64Host::TR_BASE.write(0)?;
 
         VmcsField64Host::GDTR_BASE.write(GdtStruct::sgdt().base.as_u64())?;
-        VmcsField64Host::IDTR_BASE.write(IDT.lock().pointer().base.as_u64())?;
+        VmcsField64Host::IDTR_BASE.write(IdtStruct::sidt().base.as_u64())?;
 
         VmcsField64Host::IA32_SYSENTER_ESP.write(0)?;
         VmcsField64Host::IA32_SYSENTER_EIP.write(0)?;

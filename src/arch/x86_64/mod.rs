@@ -1,6 +1,7 @@
 #[macro_use]
 mod context;
 mod apic;
+mod boot_rt;
 mod cpuid;
 mod entry;
 mod exception;
@@ -13,6 +14,7 @@ pub mod cpu;
 pub mod serial;
 pub mod vmm;
 
+pub use boot_rt::start_rt_cpus;
 pub use context::{GeneralRegisters, LinuxContext};
 pub use exception::ExceptionType;
 pub use page_table::PageTable as HostPageTable;
