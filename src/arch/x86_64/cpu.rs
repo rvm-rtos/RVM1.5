@@ -6,7 +6,7 @@ use super::apic;
 use super::cpuid::CpuId;
 use crate::error::HvResult;
 use crate::memory::{addr::phys_to_virt, hv_page_table, MemFlags, MemoryRegion, PAGE_SIZE};
-use crate::percpu::{entered_cpus, PerCpu};
+use crate::percpu::PerCpu;
 
 pub fn frequency() -> u16 {
     static CPU_FREQUENCY: spin::Once<u16> = spin::Once::new();
@@ -72,13 +72,13 @@ pub unsafe fn start_rt_cpus() -> HvResult {
     start_page[U64_PER_PAGE - 2] = crate::rt_cpu_entry as usize as _; // entry
 
     let max_cpus = crate::header::HvHeader::get().max_cpus;
-    let mut new_cpu_id = entered_cpus();
+    let mut new_cpu_id = PerCpu::entered_cpus();
     for apic_id in 0..max_cpus {
         if apic::apic_to_cpu_id(apic_id) == u32::MAX {
             if new_cpu_id >= max_cpus {
                 break;
             }
-            let current_entered_cpus = entered_cpus();
+            let entered_cpus = PerCpu::entered_cpus();
             let stack_top = PerCpu::from_id_mut(new_cpu_id).stack_top();
             start_page[U64_PER_PAGE - 3] = stack_top as u64; // stack
             apic::start_ap(apic_id, START_PAGE_IDX);
@@ -86,7 +86,7 @@ pub unsafe fn start_rt_cpus() -> HvResult {
 
             // wait for max 100ms
             let cycle_end = current_cycle() + 100 * 1000 * frequency() as u64;
-            while entered_cpus() <= current_entered_cpus && current_cycle() < cycle_end {
+            while PerCpu::entered_cpus() <= entered_cpus && current_cycle() < cycle_end {
                 core::hint::spin_loop();
             }
         }

@@ -41,7 +41,7 @@ use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use config::HvSystemConfig;
 use error::HvResult;
 use header::HvHeader;
-use percpu::{entered_cpus, PerCpu};
+use percpu::PerCpu;
 
 static INITED_CPUS: AtomicU32 = AtomicU32::new(0);
 static INIT_EARLY_OK: AtomicU32 = AtomicU32::new(0);
@@ -115,15 +115,14 @@ fn primary_init_late() -> HvResult {
     Ok(())
 }
 
-fn vm_main(cpu_data: &mut PerCpu, linux_sp: usize) -> HvResult {
-    let cpu_id = cpu_data.id();
-    let is_primary = cpu_id == 0;
+fn main(cpu_data: &mut PerCpu, linux_sp: usize) -> HvResult {
+    let is_primary = cpu_data.id == 0;
     let vm_cpus = HvHeader::get().vm_cpus();
-    wait_for(|| entered_cpus() < vm_cpus)?;
+    wait_for(|| PerCpu::entered_cpus() < vm_cpus)?;
     println!(
         "{} CPU {} entered.",
         if is_primary { "Primary" } else { "Secondary" },
-        cpu_id
+        cpu_data.id
     );
 
     if is_primary {
@@ -132,8 +131,8 @@ fn vm_main(cpu_data: &mut PerCpu, linux_sp: usize) -> HvResult {
         wait_for_counter(&INIT_EARLY_OK, 1)?;
     }
 
-    let inner = cpu_data.init_vm_cpu(linux_sp, cell::root_cell())?;
-    println!("CPU {} init OK.", cpu_id);
+    cpu_data.init(linux_sp, cell::root_cell())?;
+    println!("CPU {} init OK.", cpu_data.id);
     INITED_CPUS.fetch_add(1, Ordering::SeqCst);
     wait_for_counter(&INITED_CPUS, vm_cpus)?;
 
@@ -143,27 +142,25 @@ fn vm_main(cpu_data: &mut PerCpu, linux_sp: usize) -> HvResult {
         wait_for_counter(&INIT_LATE_OK, 1)?;
     }
 
-    inner.activate_vmm()
+    cpu_data.activate_vmm()
 }
 
 fn rt_main(cpu_data: &mut PerCpu) -> ! {
-    println!("RT CPU {} entered.", cpu_data.id());
-    cpu_data.init_rt_cpu().unwrap();
+    println!("RT CPU {} entered.", cpu_data.id);
     loop {
         core::hint::spin_loop();
     }
 }
 
 extern "sysv64" fn vm_cpu_entry(cpu_data: &mut PerCpu, linux_sp: usize) -> i32 {
-    if let Err(e) = vm_main(cpu_data, linux_sp) {
+    if let Err(e) = main(cpu_data, linux_sp) {
         error!("{:?}", e);
         ERROR_NUM.store(e.code(), Ordering::Release);
     }
     let code = ERROR_NUM.load(Ordering::Acquire);
     println!(
         "CPU {} return back to driver with code {}.",
-        cpu_data.id(),
-        code
+        cpu_data.id, code
     );
     code
 }

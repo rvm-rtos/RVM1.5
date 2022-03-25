@@ -14,8 +14,10 @@ use x86_64::structures::DescriptorTablePointer;
 use crate::arch::segmentation::Segment;
 use crate::arch::vmm::VcpuAccessGuestState;
 use crate::arch::{GeneralRegisters, GuestPageTableImmut, LinuxContext};
+use crate::cell::Cell;
+use crate::error::HvResult;
 use crate::memory::{addr::virt_to_phys, Frame, GenericPageTableImmut};
-use crate::{cell::Cell, error::HvResult, percpu};
+use crate::percpu::PerCpu;
 
 #[repr(C)]
 pub struct Vcpu {
@@ -64,7 +66,7 @@ impl Vcpu {
             Cr4::write(super::super::HOST_CR4);
         }
 
-        let cpu_data = percpu::current();
+        let cpu_data = PerCpu::current();
         let mut ret = Self {
             guest_regs: Default::default(),
             host_tp: cpu_data as *const _ as _,
@@ -132,7 +134,6 @@ impl Vcpu {
         self.vmcb.save.cpl == 0
     }
 
-    #[allow(dead_code)]
     pub fn in_hypercall(&self) -> bool {
         matches!(
             self.vmcb.control.exit_code.try_into(),
@@ -331,10 +332,10 @@ unsafe extern "sysv64" fn svm_run() -> ! {
     );
 }
 
-extern "sysv64" fn vmexit_handler_wrapper(cpu_data: &mut percpu::PerCpu) {
+extern "sysv64" fn vmexit_handler_wrapper(cpu_data: &mut PerCpu) {
     // Since VMRUN won't save/restore GS_BASE, we need to do it manually.
     let guest_tp = Msr::IA32_GS_BASE.read();
-    cpu_data.vm_cpu().unwrap().vcpu.vmcb.save.gs.base = guest_tp;
+    cpu_data.vcpu.vmcb.save.gs.base = guest_tp;
     unsafe { Msr::IA32_GS_BASE.write(cpu_data as *const _ as u64) };
     crate::arch::vmm::vmexit_handler();
     unsafe { Msr::IA32_GS_BASE.write(guest_tp) };

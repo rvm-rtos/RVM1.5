@@ -7,7 +7,7 @@ use numeric_enum_macro::numeric_enum;
 use crate::arch::vmm::VcpuAccessGuestState;
 use crate::arch::GuestPageTableImmut;
 use crate::error::HvResult;
-use crate::percpu::{self, VmPerCpuData};
+use crate::percpu::PerCpu;
 
 numeric_enum! {
     #[repr(u32)]
@@ -26,12 +26,12 @@ impl HyperCallCode {
 pub type HyperCallResult = HvResult<usize>;
 
 pub struct HyperCall<'a> {
-    cpu_data: &'a mut VmPerCpuData,
+    cpu_data: &'a mut PerCpu,
     _gpt: GuestPageTableImmut,
 }
 
 impl<'a> HyperCall<'a> {
-    pub fn new(cpu_data: &'a mut VmPerCpuData) -> Self {
+    pub fn new(cpu_data: &'a mut PerCpu) -> Self {
         Self {
             _gpt: cpu_data.vcpu.guest_page_table(),
             cpu_data,
@@ -85,7 +85,7 @@ impl<'a> HyperCall<'a> {
     }
 
     fn hypervisor_disable(&mut self) -> HyperCallResult {
-        let cpus = percpu::activated_vm_cpus();
+        let cpus = PerCpu::activated_cpus();
 
         static TRY_DISABLE_CPUS: AtomicU32 = AtomicU32::new(0);
         TRY_DISABLE_CPUS.fetch_add(1, Ordering::SeqCst);
