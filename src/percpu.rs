@@ -77,10 +77,11 @@ impl PerCpu {
         // Save CPU state used for linux.
         self.state = CpuState::HvDisabled;
         self.linux = LinuxContext::load_from(linux_sp);
-        self.arch.init(self.id)?;
 
         // Activate hypervisor page table on each cpu.
         unsafe { crate::memory::hv_page_table().read().activate() };
+
+        self.arch.init(self.id)?;
 
         // Initialize vCPU. Use `ptr::write()` to avoid dropping
         unsafe { core::ptr::write(&mut self.vcpu, Vcpu::new(&self.linux, cell)?) };
