@@ -15,6 +15,7 @@ numeric_enum! {
     pub enum HyperCallCode {
         HypervisorDisable = 0,
         RtStart = 1,
+        RtShutdown = 2,
     }
 }
 
@@ -64,6 +65,7 @@ impl<'a> HyperCall<'a> {
         let ret = match code {
             HyperCallCode::HypervisorDisable => self.hypervisor_disable(),
             HyperCallCode::RtStart => self.start_rtos(arg0 as _),
+            HyperCallCode::RtShutdown => self.shutdown_rtos(),
         };
         if ret.is_err() {
             warn!("HyperCall: {:?} <= {:x?}", code, ret);
@@ -109,6 +111,12 @@ impl<'a> HyperCall<'a> {
 
         info!("Starting RTOS: entry={:#x}", entry_paddr);
         unsafe { crate::arch::start_rt_cpus(entry_paddr)? };
+        Ok(0)
+    }
+
+    fn shutdown_rtos(&mut self) -> HyperCallResult {
+        info!("Shutting down RTOS...");
+        unsafe { crate::arch::shutdown_rt_cpus()? };
         Ok(0)
     }
 }

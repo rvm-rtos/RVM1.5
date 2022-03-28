@@ -123,6 +123,17 @@ pub(super) unsafe fn start_ap(apic_id: u32, start_page_idx: u8) {
     lapic.ipi_startup(apic_id, start_page_idx);
 }
 
+pub(super) unsafe fn shutdown_ap(apic_id: u32) {
+    info!("Shutting down RT cpu {}...", apic_id);
+    let apic_id = if lapic().is_x2apic {
+        ApicId::X2Apic(apic_id)
+    } else {
+        ApicId::XApic(apic_id as u8)
+    };
+
+    lapic().inner.write().ipi_init(apic_id);
+}
+
 /// Spinning delay for specified amount of time on microseconds.
 fn delay_us(us: u64) {
     let cycle_end = super::cpu::current_cycle() + us * super::cpu::frequency() as u64;

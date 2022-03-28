@@ -14,7 +14,7 @@ pub mod cpu;
 pub mod serial;
 pub mod vmm;
 
-pub use boot_rt::start_rt_cpus;
+pub use boot_rt::{shutdown_rt_cpus, start_rt_cpus};
 pub use context::{GeneralRegisters, LinuxContext};
 pub use exception::ExceptionType;
 pub use page_table::PageTable as HostPageTable;

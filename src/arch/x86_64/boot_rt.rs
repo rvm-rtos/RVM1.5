@@ -58,3 +58,11 @@ pub unsafe fn start_rt_cpus(entry_paddr: PhysAddr) -> HvResult {
     start_page.copy_from_slice(&backup);
     Ok(())
 }
+
+pub unsafe fn shutdown_rt_cpus() -> HvResult {
+    let header = crate::header::HvHeader::get();
+    for apic_id in header.vm_cpus()..header.max_cpus {
+        apic::shutdown_ap(apic_id);
+    }
+    Ok(())
+}
