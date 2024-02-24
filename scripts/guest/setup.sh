@@ -10,7 +10,7 @@ sudo mkdir -p /lib/firmware
 sudo ln -sf ~/rvm-intel.bin /lib/firmware
 
 # Clone jailhouse, apply patches and build
-git clone https://github.com/rvm-rtos/jailhouse.git
+git clone -b rt --single-branch https://github.com/rvm-rtos/jailhouse.git
 cd jailhouse
 make
 
